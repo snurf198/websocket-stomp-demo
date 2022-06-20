@@ -7,7 +7,5 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 public class ResponseDto {
     private String profileId;
-    private String sessionId;
     private String pageCode;
-    private String ip;
 }

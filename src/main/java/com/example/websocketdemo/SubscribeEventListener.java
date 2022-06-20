@@ -5,10 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationListener;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.SetOperations;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
+
+import java.util.concurrent.TimeUnit;
 
 @Component
 @RequiredArgsConstructor
@@ -18,25 +21,30 @@ public class SubscribeEventListener implements ApplicationListener<SessionSubscr
     private final RedisTemplate<String, String> redisTemplate;
 
     @Override
+    @Transactional
     public void onApplicationEvent(SessionSubscribeEvent event) {
-        log.info("subscribed");
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
         String destination = headerAccessor.getDestination();
         String profileId;
-        if(destination != null) {
-            profileId = destination.replace("/sub/pf.", "");
+        if(destination != null && destination.contains("/exchange/noti/pf.")) {
+            profileId = destination.replace("/exchange/noti/pf.", "");
         } else {
             profileId = null;
         }
-        String sessionId = headerAccessor.getSessionAttributes().get("sessionId").toString();
-        String ip = headerAccessor.getSessionAttributes().get("ip").toString();
 
-        SetOperations<String, String> setOperations = redisTemplate.opsForSet();
-        HashOperations<String, String, String> hashOperations = redisTemplate.opsForHash();
+        String sessionId = headerAccessor.getSessionId();
 
-        hashOperations.put(sessionId, "profile-id", profileId);
-        hashOperations.put(sessionId, "ip", ip);
+        log.debug("subscribed with sessionId {} with profileId {}", sessionId, profileId);
 
-        setOperations.add(profileId, sessionId);
+        if(profileId != null && sessionId != null) {
+            ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+            HashOperations<String, String, String> hashOperations = redisTemplate.opsForHash();
+
+            hashOperations.put(sessionId, "profile-id", profileId);
+            redisTemplate.expire(sessionId, 30, TimeUnit.SECONDS);
+
+            valueOperations.set(String.format("%s:%s", profileId, sessionId), "");
+            redisTemplate.expire(String.format("%s:%s", profileId, sessionId), 30, TimeUnit.SECONDS);
+        }
     }
 }

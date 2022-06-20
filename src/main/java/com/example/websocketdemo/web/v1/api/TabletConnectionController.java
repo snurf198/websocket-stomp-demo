@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SetOperations;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,12 +26,14 @@ public class TabletConnectionController {
     public List<ResponseDto> getTabletSessions(
             @RequestParam List<String> profileIds
     ) {
-        SetOperations<String, String> setOperations = redisTemplate.opsForSet();
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
 
         List<String> sessionIds = new ArrayList<>();
 
         profileIds.forEach(id -> {
-            Set<String> members = setOperations.members(id);
+            Set<String> members = redisTemplate.keys(id + ":*").stream()
+                    .map(key -> key.replace(id+":", ""))
+                    .collect(Collectors.toSet());
             if(members != null) {
                 sessionIds.addAll(members);
             }
@@ -41,9 +44,8 @@ public class TabletConnectionController {
         return sessionIds.stream().map(id -> {
             String pageCode = hashOperations.get(id, "page-code");
             String profileId = hashOperations.get(id, "profile-id");
-            String ip = hashOperations.get(id, "ip");
 
-            return new ResponseDto().setPageCode(pageCode).setProfileId(profileId).setIp(ip).setSessionId(id);
+            return new ResponseDto().setPageCode(pageCode).setProfileId(profileId);
         }).collect(Collectors.toList());
     }
 }
